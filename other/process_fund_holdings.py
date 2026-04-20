@@ -56,8 +56,11 @@ def filter_profitable_funds(df_nav):
     # 3. 计算总收益率 (期末净值 - 期初净值) / 期初净值
     nav_summary['Total_Return'] = (nav_summary['Final_NAV'] - nav_summary['Initial_NAV']) / nav_summary['Initial_NAV']
     
+    # 重置索引，将 F_INFO_WINDCODE 从索引变回普通列，方便提取基金代码
+    nav_summary = nav_summary.reset_index()
+    
     # 4. 筛选出总收益率 > 0 的基金
-    profitable_funds = nav_summary[nav_summary['Total_Return'] > 0].index.tolist()
+    profitable_funds = nav_summary[nav_summary['Total_Return'] > 0]['F_INFO_WINDCODE'].tolist()
     
     print(f"总计 {len(nav_summary)} 只基金中，筛选出 {len(profitable_funds)} 只历史总收益为正的基金。")
     return profitable_funds
