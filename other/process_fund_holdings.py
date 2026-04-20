@@ -23,29 +23,59 @@ def fetch_fund_description():
     connection.close()
     return df_desc
 
-def fetch_fund_portfolio():
-    """获取基金持仓明细（建议只取中报/年报以保证全样本，或包含季报但需知晓其只含前十大重仓）"""
+def fetch_fund_nav():
+    """获取基金复权单位净值数据"""
     connection = get_db_connection()
-    # 为了演示，这里我们先拉取所有中/年报数据，如果需要季报可以去掉条件
     sql = """
-    select S_INFO_WINDCODE, F_PRT_ENDDATE, S_INFO_STOCKWINDCODE, 
-           ANN_DATE, REPORT_TYPE 
-    from ChinaMutualFundStockPortfolio 
-    where REPORT_TYPE = '中/年报'
+    select F_INFO_WINDCODE, ANN_DATE, F_NAV_ADJUSTED 
+    from CHINAMUTUALFUNDNAV 
     """
-    print('正在拉取基金持仓明细(中/年报)...')
-    df_portfolio = pd.read_sql(sql, con=connection)
+    print('正在拉取基金复权单位净值信息(可能耗时较长)...')
+    df_nav = pd.read_sql(sql, con=connection)
     connection.close()
-    return df_portfolio
+    return df_nav
 
-def process_and_merge_data(df_portfolio, df_desc):
+def filter_profitable_funds(df_nav):
+    """
+    根据复权单位净值计算基金成立以来的总收益率，
+    过滤出历史总收益率为正（盈利）的基金代码。
+    """
+    print("正在计算基金历史总收益并剔除亏损基金...")
+    
+    # 1. 确保日期格式正确并排序（必须先排序，才能正确取到期初和期末）
+    df_nav['ANN_DATE'] = pd.to_datetime(df_nav['ANN_DATE'], format='%Y%m%d', errors='coerce')
+    df_nav = df_nav.dropna(subset=['ANN_DATE', 'F_NAV_ADJUSTED'])
+    df_nav = df_nav.sort_values(by=['F_INFO_WINDCODE', 'ANN_DATE'])
+    
+    # 2. 按基金代码分组，获取期初(first)和期末(last)的复权单位净值
+    nav_summary = df_nav.groupby('F_INFO_WINDCODE').agg(
+        Initial_NAV=('F_NAV_ADJUSTED', 'first'),
+        Final_NAV=('F_NAV_ADJUSTED', 'last')
+    )
+    
+    # 3. 计算总收益率 (期末净值 - 期初净值) / 期初净值
+    nav_summary['Total_Return'] = (nav_summary['Final_NAV'] - nav_summary['Initial_NAV']) / nav_summary['Initial_NAV']
+    
+    # 4. 筛选出总收益率 > 0 的基金
+    profitable_funds = nav_summary[nav_summary['Total_Return'] > 0].index.tolist()
+    
+    print(f"总计 {len(nav_summary)} 只基金中，筛选出 {len(profitable_funds)} 只历史总收益为正的基金。")
+    return profitable_funds
+
+def process_and_merge_data(df_portfolio, df_desc, profitable_funds_list=None):
     """清洗、合并并过滤数据"""
     print("原始持仓数据形状:", df_portfolio.shape)
     print("原始基金描述形状:", df_desc.shape)
 
     # 1. 剔除被动指数型基金（它们没有主动选股能力，不适合做 Teacher）
     df_desc_active = df_desc[df_desc['F_INFO_FIRSTINVESTSTYLE'] != '被动指数型']
-    print(f"剔除被动指数型后，剩余基金数量: {df_desc_active.shape[0]}")
+    
+    # 1.1 如果传入了盈利基金名单，则进一步过滤掉历史不赚钱的基金
+    if profitable_funds_list is not None:
+        df_desc_active = df_desc_active[df_desc_active['F_INFO_WINDCODE'].isin(profitable_funds_list)]
+        print(f"基于历史盈利条件进一步剔除亏损基金后，剩余主动基金数量: {df_desc_active.shape[0]}")
+    else:
+        print(f"剔除被动指数型后，剩余基金数量: {df_desc_active.shape[0]}")
 
     # 2. 将持仓表与基金基础信息表合并
     # 注意：持仓表用的是 S_INFO_WINDCODE，描述表用的是 F_INFO_WINDCODE
