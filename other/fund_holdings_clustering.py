@@ -33,8 +33,9 @@ def _bucket_ann_date(df, bucket: str, keep_latest_per_fund: bool):
     elif bucket == "halfyear":
         y = df["ANN_DATE"].dt.year
         m = df["ANN_DATE"].dt.month
+        # 1~4月归上一年12-31，5~12月归当年06-30
         bucket_date = pd.to_datetime(
-            np.where(m <= 4, (y - 1).astype(str) + "-12-31", np.where(m <= 8, y.astype(str) + "-06-30", y.astype(str) + "-12-31"))
+            np.where(m <= 4, (y - 1).astype(str) + "-12-31", y.astype(str) + "-06-30")
         )
     else:
         raise ValueError("date_bucket 必须是 raw/month/quarter/halfyear")
