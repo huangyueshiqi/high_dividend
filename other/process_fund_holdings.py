@@ -58,18 +58,17 @@ def process_and_merge_data(df_portfolio, df_desc):
     )
     print("合并后的数据形状:", df_merged.shape)
 
-    # 3. 过滤掉持股数量 <= 50 的基金（针对每一个报告期）
-    print("正在过滤持股数 <= 50 的基金(可能较耗时)...")
-    # 先计算每个基金每个报告期的持股数
-    holdings_count = df_merged.groupby(['S_INFO_WINDCODE', 'F_PRT_ENDDATE']).size().reset_index(name='stock_count')
-    # 筛选出 > 50 的组合
-    valid_funds_periods = holdings_count[holdings_count['stock_count'] > 50]
+    # 3. 过滤掉在整个生命周期内累计持股数量（去重后）<= 50 的基金
+    print("正在过滤整个生命周期内累计持股数 <= 50 的基金(可能较耗时)...")
+    # 按基金代码分组，计算其历史上买过的所有去重股票数量
+    holdings_count = df_merged.groupby('S_INFO_WINDCODE')['S_INFO_STOCKWINDCODE'].nunique().reset_index(name='lifetime_stock_count')
+    # 筛选出累计持股 > 50 的基金代码
+    valid_funds = holdings_count[holdings_count['lifetime_stock_count'] > 50]['S_INFO_WINDCODE']
     
-    # 将符合条件的组合与原表 merge，实现过滤
-    df_filtered = pd.merge(df_merged, valid_funds_periods[['S_INFO_WINDCODE', 'F_PRT_ENDDATE']], 
-                           on=['S_INFO_WINDCODE', 'F_PRT_ENDDATE'], 
-                           how='inner')
-    print("过滤持股数>50后，剩余数据形状:", df_filtered.shape)
+    # 将符合条件的基金保留下来
+    df_filtered = df_merged[df_merged['S_INFO_WINDCODE'].isin(valid_funds)]
+    print(f"过滤生命周期累计持股数>50后，剩余基金数量: {valid_funds.shape[0]}")
+    print("过滤后剩余持仓数据形状:", df_filtered.shape)
 
     # 4. 时间字段处理与对齐（防范未来函数的核心！）
     # 转换日期格式
