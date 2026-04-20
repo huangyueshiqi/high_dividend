@@ -13,6 +13,46 @@ class ClusteringConfig:
     n_components: int = 50
     use_tfidf: bool = True
     random_state: int = 42
+    date_bucket: str = "raw"
+    keep_latest_per_fund: bool = False
+
+
+def _bucket_ann_date(df, bucket: str, keep_latest_per_fund: bool):
+    import numpy as np
+    import pandas as pd
+
+    df = df.copy()
+    df["ANN_DATE"] = pd.to_datetime(df["ANN_DATE"])
+
+    if bucket == "raw":
+        bucket_date = df["ANN_DATE"]
+    elif bucket == "month":
+        bucket_date = df["ANN_DATE"].dt.to_period("M").dt.to_timestamp()
+    elif bucket == "quarter":
+        bucket_date = df["ANN_DATE"].dt.to_period("Q").dt.to_timestamp()
+    elif bucket == "halfyear":
+        y = df["ANN_DATE"].dt.year
+        m = df["ANN_DATE"].dt.month
+        bucket_date = pd.to_datetime(
+            np.where(m <= 4, (y - 1).astype(str) + "-12-31", np.where(m <= 8, y.astype(str) + "-06-30", y.astype(str) + "-12-31"))
+        )
+    else:
+        raise ValueError("date_bucket 必须是 raw/month/quarter/halfyear")
+
+    df["CLUSTER_DATE"] = bucket_date
+
+    if keep_latest_per_fund:
+        latest = (
+            df.groupby(["S_INFO_WINDCODE", "CLUSTER_DATE"], sort=False)["ANN_DATE"]
+            .max()
+            .rename("LATEST_ANN_DATE")
+            .reset_index()
+        )
+        df = df.merge(latest, on=["S_INFO_WINDCODE", "CLUSTER_DATE"], how="inner")
+        df = df[df["ANN_DATE"] == df["LATEST_ANN_DATE"]].drop(columns=["LATEST_ANN_DATE"])
+
+    df = df.drop(columns=["ANN_DATE"]).rename(columns={"CLUSTER_DATE": "ANN_DATE"})
+    return df
 
 
 def cluster_funds_by_holdings(df_final: "pd.DataFrame", config: ClusteringConfig = ClusteringConfig()):
@@ -34,8 +74,8 @@ def cluster_funds_by_holdings(df_final: "pd.DataFrame", config: ClusteringConfig
         raise ValueError(f"df_final 缺少列: {sorted(missing)}")
 
     df = df_final[list(required)].dropna().copy()
-    df["ANN_DATE"] = pd.to_datetime(df["ANN_DATE"])
     df = df.drop_duplicates()
+    df = _bucket_ann_date(df, bucket=config.date_bucket, keep_latest_per_fund=config.keep_latest_per_fund)
 
     labels_all: list[pd.DataFrame] = []
     for ann_date, g in df.groupby("ANN_DATE", sort=True):
@@ -124,6 +164,8 @@ def _build_arg_parser():
     p.add_argument("--n-components", type=int, default=50)
     p.add_argument("--no-tfidf", action="store_true")
     p.add_argument("--random-state", type=int, default=42)
+    p.add_argument("--date-bucket", default="raw", choices=["raw", "month", "quarter", "halfyear"])
+    p.add_argument("--keep-latest-per-fund", action="store_true")
     return p
 
 
@@ -141,6 +183,8 @@ def main():
         n_components=args.n_components,
         use_tfidf=not args.no_tfidf,
         random_state=args.random_state,
+        date_bucket=args.date_bucket,
+        keep_latest_per_fund=args.keep_latest_per_fund,
     )
     df_labels_by_date, df_fund_main_cluster = cluster_funds_by_holdings(df_final, config=config)
 
