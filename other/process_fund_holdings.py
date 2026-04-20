@@ -119,14 +119,20 @@ def process_and_merge_data(df_portfolio, df_desc, profitable_funds_list=None):
 
 if __name__ == "__main__":
     # 为了演示完整流程，这里你可以直接传入你已经读好的 DataFrame 
-    # 假设你已经有 df_portfolio 和 df_desc
-    # df_final = process_and_merge_data(df_portfolio, df_desc)
+    # 假设你已经有 df_portfolio, df_desc, df_nav
     
-    # 如果要直接从数据库拉取（注意内存消耗可能较大）
+    # 示例调用流程（取消注释即可使用，如果直接连库跑）：
+    # print("========== 开始拉取基础数据 ==========")
     # df_desc = fetch_fund_description()
     # df_portfolio = fetch_fund_portfolio()
-    # df_final = process_and_merge_data(df_portfolio, df_desc)
-    # 
+    # df_nav = fetch_fund_nav()
+    
+    # print("\n========== 阶段1: 提取历史盈利基金 ==========")
+    # profitable_funds = filter_profitable_funds(df_nav)
+    
+    # print("\n========== 阶段2: 组合过滤与清洗 ==========")
+    # df_final = process_and_merge_data(df_portfolio, df_desc, profitable_funds_list=profitable_funds)
+    
     # df_final.to_csv('data/processed_fund_holdings.csv', index=False)
-    # print("数据处理完成，已保存至 data/processed_fund_holdings.csv")
+    # print("\n数据处理完成，已保存至 data/processed_fund_holdings.csv")
     pass
