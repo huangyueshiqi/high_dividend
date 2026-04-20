@@ -42,6 +42,19 @@ def _bucket_ann_date(df, bucket: str, keep_latest_per_fund: bool):
 
     df["CLUSTER_DATE"] = bucket_date
 
+    # 检查是否存在同一基金在同一 bucket 内有多个不同 ANN_DATE
+    duplicate_dates = df.groupby(["S_INFO_WINDCODE", "CLUSTER_DATE"])["ANN_DATE"].nunique()
+    duplicates = duplicate_dates[duplicate_dates > 1]
+    if not duplicates.empty:
+        print(f"\n[Warning] 发现 {len(duplicates)} 个 (基金, 桶) 组合内存在多个不同的 ANN_DATE！")
+        print("前几个示例如下：")
+        for (f_code, b_date), count in duplicates.head().items():
+            dates = df[(df["S_INFO_WINDCODE"] == f_code) & (df["CLUSTER_DATE"] == b_date)]["ANN_DATE"].unique()
+            print(f"  基金: {f_code}, 桶: {b_date.strftime('%Y-%m-%d')}, 包含的原始公告日: {[d.strftime('%Y-%m-%d') for d in dates]}")
+        print()
+    else:
+        print("\n[Info] 检查完毕：没有发现任何同一基金在同一桶内有多个不同 ANN_DATE 的情况。\n")
+
     if keep_latest_per_fund:
         latest = (
             df.groupby(["S_INFO_WINDCODE", "CLUSTER_DATE"], sort=False)["ANN_DATE"]
